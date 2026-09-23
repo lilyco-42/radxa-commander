@@ -32,6 +32,7 @@ VERSION = "0.2.0"
 LISTEN = ("0.0.0.0", 18080)
 TOKEN_FILE = "/etc/radxa-commander/token"
 BLOCKED_FILE = "/etc/radxa-commander/blocked.conf"
+WEB_INDEX = "/usr/local/share/radxa-commander/index.html"
 MIHOMO_CTRL = "http://127.0.0.1:9091"
 SELECTOR = "\U0001f680 \u8282\u70b9\u9009\u62e9"  # 🚀 节点选择
 AP_CON = "radxa-ap"
@@ -359,6 +360,20 @@ class Handler(BaseHTTPRequestHandler):
             return {}
 
     def do_GET(self):
+        if self.path == "/" or self.path == "/index.html":
+            try:
+                with open(WEB_INDEX, "rb") as f:
+                    body = f.read()
+            except OSError:
+                self._send(404, {"error": "web ui not installed"})
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if self.path == "/api/hello":
             self._send(200, {"app": "radxa-commander", "version": VERSION})
             return

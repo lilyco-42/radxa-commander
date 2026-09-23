@@ -5,6 +5,12 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 install -m 0755 commander-api.py /usr/local/bin/commander-api.py
+mkdir -p /usr/local/share/radxa-commander
+if [[ -f web/index.html ]]; then
+  install -m 0644 web/index.html /usr/local/share/radxa-commander/index.html
+elif [[ -f index.html ]]; then
+  install -m 0644 index.html /usr/local/share/radxa-commander/index.html
+fi
 install -m 0644 -o root -g root commander-api.service /etc/systemd/system/commander-api.service
 install -m 0755 ap-power-watch.py /usr/local/bin/ap-power-watch.py
 install -m 0644 -o root -g root ap-power.service /etc/systemd/system/ap-power.service

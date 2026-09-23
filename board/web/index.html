@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>A7A 路由器管家</title>
+<style>
+:root{color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:#0f1420;color:#e6ecf5;font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;font-size:14px}
+header{padding:14px 14px 6px;font-size:18px;font-weight:700}
+.wrap{padding:0 12px 30px;max-width:640px;margin:0 auto}
+.card{background:#182032;border:1px solid #26314a;border-radius:12px;padding:12px;margin:10px 0}
+.card h3{margin:0 0 8px;font-size:14px;color:#60a5fa}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+input,select{flex:1;min-width:0;background:#0f1420;border:1px solid #2c3a58;color:#e6ecf5;border-radius:8px;padding:9px 10px;font-size:14px}
+button{background:#2563eb;border:0;color:#fff;border-radius:8px;padding:9px 14px;font-size:14px}
+button.warn{background:#7a2e2e}
+button.ghost{background:#26314a}
+button.on{background:#166534}
+pre{white-space:pre-wrap;word-break:break-word;margin:6px 0 0;font-size:13px;line-height:1.65}
+.dev{display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid #222d47}
+.dev:first-of-type{border-top:0}
+.dev .info{flex:1;min-width:0}
+.dev .mac{color:#8b98b0;font-size:12px}
+.node{display:block;width:100%;text-align:left;margin:4px 0}
+.node.cur{background:#166534}
+.ok{color:#4ade80}.bad{color:#f87171}.muted{color:#8b98b0}
+#conn{font-size:12px}
+</style>
+</head>
+<body>
+<header>🚀 A7A 路由器管家 <span id="conn" class="muted"></span></header>
+<div class="wrap">
+
+<div class="card"><h3>连接</h3>
+<div class="row">
+<input id="host" placeholder="板子IP">
+<input id="token" type="password" placeholder="token" style="flex:1.4">
+<button onclick="saveConn()">连接</button>
+</div>
+<pre id="hello" class="muted"></pre>
+</div>
+
+<div class="card"><h3>状态 <button class="ghost" onclick="loadStatus()">刷新</button></h3>
+<pre id="status">—</pre>
+<div class="row"><button class="ghost" onclick="runCheck()">🩺 一键体检</button></div>
+<pre id="check"></pre>
+</div>
+
+<div class="card"><h3>WiFi <button class="ghost" onclick="loadWifi()">读取</button></h3>
+<div class="row"><input id="ssid" placeholder="SSID"></div>
+<div class="row" style="margin-top:8px"><input id="wpass" type="password" placeholder="密码(≥8位)"><input id="chan" type="number" min="1" max="13" placeholder="信道" style="max-width:90px"></div>
+<div class="row" style="margin-top:8px"><button onclick="applyWifi()">应用（会断线重连）</button></div>
+</div>
+
+<div class="card"><h3>在线设备 <button class="ghost" onclick="loadClients()">刷新</button></h3>
+<div id="clients">—</div>
+</div>
+
+<div class="card"><h3>智能分流 <button class="ghost" onclick="loadSplit()">刷新</button></h3>
+<div class="muted" id="splitNow" style="margin-bottom:6px">—</div>
+<div id="nodes"></div>
+</div>
+
+<div class="card"><h3>工具</h3>
+<div class="row">
+<button id="apBtn" onclick="toggleAp()">AP 开/关</button>
+<button class="warn" onclick="if(confirm('重启路由器？WiFi 中断约1分钟'))api('POST','/api/reboot').then(()=>alert('已发送重启指令'))">重启路由器</button>
+</div>
+<pre id="apState" class="muted"></pre>
+</div>
+
+</div>
+<script>
+let base = 'http://' + location.hostname + ':18080';
+let token = localStorage.getItem('cmdr_token') || '';
+let apOn = true;
+function init(){
+  document.getElementById('host').value = location.hostname;
+  document.getElementById('token').value = token;
+  setConn('未连接');
+  if (token) hello();
+}
+async function api(method, path, body){
+  const r = await fetch(base + path, {
+    method, headers: Object.assign({'Authorization': 'Bearer ' + token},
+      body ? {'Content-Type': 'application/json'} : {}),
+    body: body ? JSON.stringify(body) : undefined});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+  return j;
+}
+function setConn(s){ document.getElementById('conn').textContent = s; }
+function saveConn(){
+  const h = document.getElementById('host').value.trim();
+  if (h) base = 'http://' + h + ':18080';
+  token = document.getElementById('token').value.trim();
+  localStorage.setItem('cmdr_token', token);
+  hello().then(() => { loadStatus(); loadClients(); loadSplit(); refreshAp(); });
+}
+async function hello(){
+  try {
+    const j = await api('GET', '/api/hello');
+    setConn('已连接 v' + j.version); return true;
+  } catch(e){ setConn('连接失败：' + e.message); return false; }
+}
+async function loadStatus(){
+  try {
+    const s = await api('GET', '/api/status');
+    const m = s.mem_mb || {};
+    document.getElementById('status').textContent =
+      '板子 ' + s.board + ' · 在线 ' + Math.floor(s.uptime_s/3600) + 'h' + Math.floor(s.uptime_s%3600/60) + 'm' +
+      '\n负载 ' + s.load1 + ' · 内存可用 ' + (m.MemAvailable||'?') + '/' + (m.MemTotal||'?') + 'MB' +
+      (s.temp_c ? ' · ' + s.temp_c + '℃' : '') +
+      '\nWAN ' + ((s.wan||{}).iface||'') + ' ' + ((s.wan||{}).ip||'') +
+      '\n热点 ' + ((s.ap||{}).ssid||'') + ' ch' + ((s.ap||{}).channel||'');
+    document.getElementById('hello').textContent = '';
+  } catch(e){ document.getElementById('status').textContent = '失败：' + e.message; }
+}
+async function runCheck(){
+  const el = document.getElementById('check'); el.textContent = '体检中…';
+  try {
+    const c = await api('GET', '/api/check');
+    const rows = [['热点在线',c.ap_active],['IP转发',c.ip_forward],
+      ['tx-delay=' + ((c.tx_delay||{}).value||'?'), !!((c.tx_delay||{}).ok)],
+      ['NAT出口',c.nat_masquerade],['TCP劫持',c.redirect_tcp],['DNS劫持',c.dns_hijack_udp],
+      ['mihomo',c.mihomo_active],['dnsmasq',c.dnsmasq_running]];
+    el.innerHTML = rows.map(r => '<span class="' + (r[1]?'ok':'bad') + '">' + (r[1]?'✅':'❌') + ' ' + r[0] + '</span>').join('\n');
+  } catch(e){ el.textContent = '失败：' + e.message; }
+}
+async function loadWifi(){
+  try {
+    const w = await api('GET', '/api/wifi');
+    document.getElementById('ssid').value = w.ssid || '';
+    document.getElementById('wpass').value = w.password || '';
+    document.getElementById('chan').value = w.channel || '';
+  } catch(e){ alert('读取失败：' + e.message); }
+}
+async function applyWifi(){
+  const p = document.getElementById('wpass').value;
+  if (p && p.length < 8) return alert('密码至少8位');
+  if (!confirm('应用后热点重建，手机需重连。继续？')) return;
+  const body = {ssid: document.getElementById('ssid').value.trim(),
+    channel: parseInt(document.getElementById('chan').value) || undefined};
+  if (p) body.password = p;
+  try { await api('PUT', '/api/wifi', body); alert('已应用，请重连WiFi'); }
+  catch(e){ alert('应用失败：' + e.message); }
+}
+async function loadClients(){
+  const box = document.getElementById('clients'); box.textContent = '加载中…';
+  try {
+    const arr = await api('GET', '/api/clients');
+    if (!arr.length) { box.textContent = '暂无设备'; return; }
+    box.innerHTML = '';
+    arr.forEach(c => {
+      const d = document.createElement('div'); d.className = 'dev';
+      const name = c.hostname || c.mac;
+      d.innerHTML = '<div class="info">' + name + '<br><span class="mac">' + c.ip + ' · ' + c.mac + ' · ' + c.state + (c.blocked ? ' · 已拉黑' : '') + '</span></div>';
+      const b = document.createElement('button');
+      b.textContent = c.blocked ? '解禁' : '拉黑';
+      if (c.blocked) b.className = 'ghost';
+      b.onclick = async () => {
+        try { await api('POST', c.blocked ? '/api/clients/unblock' : '/api/clients/block', {mac: c.mac}); loadClients(); }
+        catch(e){ alert('操作失败：' + e.message); }
+      };
+      d.appendChild(b); box.appendChild(d);
+    });
+  } catch(e){ box.textContent = '失败：' + e.message; }
+}
+async function loadSplit(){
+  try {
+    const g = await api('GET', '/api/split');
+    document.getElementById('splitNow').textContent = '当前：' + g.now;
+    const box = document.getElementById('nodes'); box.innerHTML = '';
+    (g.all || []).forEach(n => {
+      const b = document.createElement('button');
+      b.className = 'node' + (n === g.now ? ' cur' : '');
+      b.textContent = (n === g.now ? '● ' : '○ ') + n;
+      b.onclick = async () => {
+        try { await api('PUT', '/api/split', {name: n}); loadSplit(); }
+        catch(e){ alert('切换失败：' + e.message); }
+      };
+      box.appendChild(b);
+    });
+  } catch(e){ document.getElementById('splitNow').textContent = '失败：' + e.message; }
+}
+async function refreshAp(){
+  try {
+    const a = await api('GET', '/api/ap');
+    apOn = !!a.enabled;
+    document.getElementById('apState').textContent = 'AP：' + (apOn ? '开' : '关') + '（' + (a.ssid || '') + '）' + (a.auto ? ' · 自动：' + a.auto : '');
+    document.getElementById('apBtn').textContent = apOn ? '关闭 AP' : '打开 AP';
+  } catch(e){ document.getElementById('apState').textContent = '失败：' + e.message; }
+}
+async function toggleAp(){
+  const t = !apOn;
+  if (!t && !confirm('关闭AP后所有WiFi设备掉线，需用本页（经家庭局域网）重新打开。继续？')) return;
+  try { await api('PUT', '/api/ap', {enabled: t}); refreshAp(); }
+  catch(e){ alert('操作失败：' + e.message); }
+}
+init();
+</script>
+</body>
+</html>

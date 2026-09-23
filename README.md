@@ -46,8 +46,26 @@ Release 签名用仓库 Secrets：`KEYSTORE_B64` / `KEY_ALIAS` / `KEYSTORE_PASS`
 ## 使用
 
 1. 手机连 `Radxa-AP`（或同一局域网）
-2. 打开 App → IP 填 `10.42.0.1`（AP 下）或板子 LAN IP → 填 token → 连接
+2. App：IP 填 `10.42.0.1`（AP 下）或板子 LAN IP → 填 token → 连接
 3. （可选）点“发现”自动找板子
+
+## 免安装管理网页
+
+板端 API 同端口直接 serve 管理页，无需装 App，手机浏览器打开即用：
+
+- AP 下：http://10.42.0.1:18080/
+- 家庭局域网：http://192.168.10.165:18080/
+
+页面里填 token（浏览器记住），功能与 App 对齐：状态/体检、WiFi、设备拉黑、分流切换、AP 开关、重启。
+
+## AP 省电策略
+
+默认行为：AP 常开（定时器默认关闭——手动开关随时可用）。
+
+如需夜间自动休眠，在板上改 `/etc/radxa-commander/ap-power.conf`
+（`QUIET_ON=1` + 时间段），`systemctl enable --now ap-power.timer` 即生效；
+无人自动关把 `IDLE_OFF=1`。注意 AP 关后手机无法自行唤醒，
+需经家庭局域网用 App/网页重新打开，或等早晨定时结束自动恢复。
 
 ## 路线图
 
