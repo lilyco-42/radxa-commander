@@ -18,7 +18,7 @@ jobs:
           java-version: '17'
       - uses: android-actions/setup-android@v3
         with:
-          packages: platform-tools "platforms;android-36.1" "build-tools;36.1.0"
+          packages: 'platform-tools platforms;android-36.1 build-tools;36.1.0'
       - name: Build APK
         working-directory: android
         run: bash build-apk.sh
