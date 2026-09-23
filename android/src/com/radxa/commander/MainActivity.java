@@ -51,6 +51,8 @@ public class MainActivity extends Activity {
     private LinearLayout clientsBox;
     private TextView splitNow;
     private LinearLayout splitBox;
+    private TextView apState;
+    private boolean apEnabled = true;
 
     private int pad;
 
@@ -183,6 +185,8 @@ public class MainActivity extends Activity {
             refreshClients();
         } else if ("split".equals(name)) {
             refreshSplit();
+        } else if ("tools".equals(name)) {
+            refreshAp();
         }
     }
 
@@ -684,8 +688,13 @@ public class MainActivity extends Activity {
 
     private void buildToolsPage() {
         pTools.addView(mkLabel("工具"));
+        apState = mkBody();
+        pTools.addView(apState);
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
+        row.addView(mkBtn("AP 开/关", new View.OnClickListener() {
+            public void onClick(View v) { confirmToggleAp(); }
+        }));
         row.addView(mkBtn("↻ 重启路由器", new View.OnClickListener() {
             public void onClick(View v) { confirmReboot(); }
         }));
@@ -694,6 +703,61 @@ public class MainActivity extends Activity {
         hint.setText("改 WiFi 密码/SSID 后手机会断开，用新密码重连即可。\n拉黑立即断开该设备。\n切换节点即时生效，无需重连。");
         hint.setTextSize(12);
         pTools.addView(hint);
+    }
+
+    private void refreshAp() {
+        if (api == null) {
+            return;
+        }
+        runBg(new Runnable() {
+            public void run() {
+                try {
+                    final JSONObject a = api.get("/api/ap");
+                    apEnabled = a.optBoolean("enabled", true);
+                    final String auto = a.optString("auto", "");
+                    final String txt = "AP：" + (apEnabled ? "开" : "关") + "（"
+                            + a.optString("ssid") + "）"
+                            + ("".equals(auto) ? "" : " · 自动：" + auto);
+                    ui.post(new Runnable() {
+                        public void run() { apState.setText(txt); }
+                    });
+                } catch (final Exception e) {
+                    toast("读取失败：" + e.getMessage());
+                }
+            }
+        });
+    }
+
+    private void confirmToggleAp() {
+        final boolean target = !apEnabled;
+        new AlertDialog.Builder(this)
+                .setTitle(target ? "打开 AP？" : "关闭 AP？")
+                .setMessage(target ? "热点将重新广播，设备可重连。"
+                        : "热点关闭后所有 WiFi 设备掉线，且无法自行唤醒，需用本 App（经家庭局域网）或定时任务重新打开。继续吗？")
+                .setPositiveButton(target ? "打开" : "关闭", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface d, int w) { toggleAp(target); }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private void toggleAp(final boolean target) {
+        if (api == null) {
+            return;
+        }
+        runBg(new Runnable() {
+            public void run() {
+                try {
+                    JSONObject body = new JSONObject();
+                    body.put("enabled", target);
+                    api.put("/api/ap", body);
+                    toast(target ? "AP 已打开" : "AP 已关闭");
+                    refreshAp();
+                } catch (final Exception e) {
+                    toast("操作失败：" + e.getMessage());
+                }
+            }
+        });
     }
 
     private void confirmReboot() {

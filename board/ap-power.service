@@ -1,0 +1,6 @@
+[Unit]
+Description=radxa-commander AP power watcher (oneshot)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/bin/ap-power-watch.py

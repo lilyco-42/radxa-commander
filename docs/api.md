@@ -9,6 +9,9 @@
 # GET  /api/wifi               {ssid, password, channel}
 # PUT  /api/wifi               {ssid?, password?(>=8), channel?(1..13)} -> wifi state
 #                              NOTE: AP re-applies, clients drop and must reconnect.
+# GET  /api/ap                 {enabled, auto(null|quiet|idle|manual), ssid}
+# PUT  /api/ap                 {enabled:true|false} -> ap state
+#                              NOTE: manual action clears auto flag; timer never fights it.
 # GET  /api/clients            [{mac, ip, hostname, state, blocked}]
 # POST /api/clients/block      {mac} -> {mac, blocked:true}
 # POST /api/clients/unblock    {mac} -> {mac, blocked:false}

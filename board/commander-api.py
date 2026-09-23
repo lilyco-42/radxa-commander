@@ -28,7 +28,7 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 LISTEN = ("0.0.0.0", 18080)
 TOKEN_FILE = "/etc/radxa-commander/token"
 BLOCKED_FILE = "/etc/radxa-commander/blocked.conf"
@@ -113,7 +113,9 @@ def get_status():
         "temp_c": temp_c,
         "wan": {"iface": "end0", "ip": wan_ip},
         "ap": {"ssid": ssid.split(":", 1)[-1] if ":" in ssid else ssid,
-               "channel": chan.split(":", 1)[-1] if ":" in chan else chan},
+               "channel": chan.split(":", 1)[-1] if ":" in chan else chan,
+               "enabled": ap_active(),
+               "auto": read_ap_flag()},
         "mihomo": {"active": mm_active == "active", "group_now": group_now,
                    "group_all": group_all},
         "time": int(time.time()),
@@ -167,6 +169,48 @@ def set_wifi(body):
         raise RuntimeError("热点重开失败: " + err)
     time.sleep(2)
     return get_wifi()
+
+
+def get_ap():
+    reason = read_ap_flag()
+    _, ssid, _ = nmcli("-f", "802-11-wireless.ssid", "connection", "show", AP_CON)
+    return {"enabled": ap_active(),
+            "auto": reason,
+            "ssid": ssid.split(":", 1)[-1] if ":" in ssid else ssid}
+
+
+def set_ap(enabled):
+    if enabled:
+        rc, _, err = run("nmcli", "connection", "up", AP_CON)
+        if rc:
+            raise RuntimeError("热点开启失败: " + err)
+    else:
+        rc, _, err = run("nmcli", "connection", "down", AP_CON)
+        if rc:
+            raise RuntimeError("热点关闭失败: " + err)
+    clear_ap_flag()  # manual action: timer never fights the user
+    time.sleep(2)
+    return get_ap()
+
+
+def ap_active():
+    rc, out, _ = run("nmcli", "-t", "-f", "NAME", "connection", "show", "--active")
+    return AP_CON in (out or "").splitlines()
+
+
+def read_ap_flag():
+    try:
+        with open("/run/radxa-ap-auto") as f:
+            return f.read().strip() or None
+    except OSError:
+        return None
+
+
+def clear_ap_flag():
+    try:
+        os.unlink("/run/radxa-ap-auto")
+    except OSError:
+        pass
 
 
 def get_clients():
@@ -326,6 +370,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, get_status())
             elif self.path == "/api/wifi":
                 self._send(200, get_wifi())
+            elif self.path == "/api/ap":
+                self._send(200, get_ap())
             elif self.path == "/api/clients":
                 self._send(200, get_clients())
             elif self.path == "/api/split":
@@ -345,6 +391,11 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if self.path == "/api/wifi" and self.command == "PUT":
                 self._send(200, set_wifi(body))
+            elif self.path == "/api/ap" and self.command == "PUT":
+                if not isinstance(body.get("enabled"), bool):
+                    self._send(400, {"error": "enabled 需 true/false"})
+                else:
+                    self._send(200, set_ap(body["enabled"]))
             elif self.path == "/api/clients/block":
                 self._send(200, set_blocked(body.get("mac", ""), True))
             elif self.path == "/api/clients/unblock":

@@ -14,7 +14,7 @@ UNSIGNED="$OUT/commander-unsigned.apk"
 ALIGNED="$OUT/commander.apk"
 
 "$BT/aapt2" link -o "$UNSIGNED" -I "$PLAT" --manifest "$MAN" \
-  --version-code 1 --version-name '0.1.0' --min-sdk-version 24 --target-sdk-version 36
+  --version-code 2 --version-name '0.2.0' --min-sdk-version 24 --target-sdk-version 36
 rm -rf "$OUT/classes" && mkdir -p "$OUT/classes"
 find "$SRC" -name '*.java' > "$OUT/sources.txt"
 javac -encoding UTF-8 -source 8 -target 8 -cp "$PLAT" -d "$OUT/classes" @"$OUT/sources.txt"

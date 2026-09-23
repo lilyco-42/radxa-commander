@@ -19,7 +19,7 @@ $aligned = Join-Path $out 'commander-dev.apk'
 $keystore = Join-Path $out 'dev.keystore'
 
 & "$bt\aapt2.exe" link -o $unsigned -I $plat --manifest $man `
-  --version-code 1 --version-name '0.1.0' --min-sdk-version 24 --target-sdk-version 36
+  --version-code 2 --version-name '0.2.0' --min-sdk-version 24 --target-sdk-version 36
 $classes = Join-Path $out 'classes'
 Remove-Item -Recurse -Force $classes -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $classes | Out-Null

@@ -1,0 +1,9 @@
+[Unit]
+Description=radxa-commander AP power watcher timer
+
+[Timer]
+OnCalendar=*:0/5
+Persistent=true
+
+[Install]
+WantedBy=timers.target
