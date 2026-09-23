@@ -1,0 +1,8 @@
+*.apk
+*.keystore
+build/
+*.log
+.DS_Store
+Thumbs.db
+router-config.toml
+*-token.txt
