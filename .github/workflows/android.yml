@@ -23,6 +23,12 @@ jobs:
           packages: 'platform-tools platforms;android-36.1 build-tools;36.1.0'
       - name: Build APK
         working-directory: android
+        env:
+          # 版本号跟 tag 走（v0.2.1 -> versionName 0.2.1 / versionCode 201）
+          VERSION_NAME: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '0.2.1' }}
+          # 发版必须有稳定签名密钥。没有就直接失败 —— 用临时密钥签出来的包
+          # 盖不上旧版（INSTALL_FAILED_UPDATE_INCOMPATIBLE），发出去等于给用户埋坑。
+          REQUIRE_RELEASE_KEY: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '' }}
         run: bash build-apk.sh
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

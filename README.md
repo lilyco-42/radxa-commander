@@ -62,13 +62,37 @@ App 和网页版在 token 不对时都会**明确说「token 不对」并把上�
 ```
 
 CI（`.github/workflows/android.yml`）每次 push 出 APK artifact；打 tag `v*` 自动发 Release。
-Release 签名用仓库 Secrets：`KEYSTORE_B64` / `KEY_ALIAS` / `KEYSTORE_PASS` / `KEY_PASS`。
+版本号跟 tag 走（`v0.2.1` → `versionName=0.2.1` / `versionCode=201`）。
+
+### ⚠️ 签名密钥必须固定（否则新版装不上旧版）
+
+Release 签名用仓库 Secrets：`KEYSTORE_B64` / `KEY_ALIAS` / `KEYSTORE_PASS` / `KEY_PASS`（**已配置**）。
+
+**为什么强调这个**：Secrets 没配时，`build-apk.sh` 会 `keytool` 现场生成一把临时 dev key。
+结果是**每次 CI 出包的签名都不一样**，Android 直接拒绝安装：
+`INSTALL_FAILED_UPDATE_INCOMPATIBLE` —— 用户只能先卸载（连 IP/token 一起丢）。
+
+本项目历史上就踩过：本地 dev 包、v0.2.0 Release 包、后来的 CI 包**是三把不同的钥匙**，
+而且那两把临时私钥随 runner 一起销毁、**永久找不回来了**。
+
+所以现在 `build-apk.sh` 在**发版构建**（tag）时如果没有 `KEYSTORE_B64` 会**直接失败**，
+不再产出「装不上去的 Release」。
+
+> **一次性代价**：如果你手机上装的旧版是用已丢失的临时密钥签的，
+> 这次（以及以后）的包第一次安装需要**先卸载旧版**。卸载一次之后，
+> 以后所有版本都能正常覆盖安装。
+> 如果旧版恰好是本地 `commander-dev.apk`（同一个 `dev.keystore`），则可以无缝升级。
 
 ## 使用
 
 1. 手机连 `Radxa-AP`（或同一局域网）
-2. App：IP 填 `10.42.0.1`（AP 下）或板子 LAN IP → 填 token（`cat ~/commander-token.txt`）→ 连接
-3. （可选）点“发现”自动找板子
+2. App 首屏就是连接区：**板子 IP** 一行、**token** 一行（都带标签），
+   填完点「连接」→ 状态栏显示「已连接 · token 正常」才算进去了
+3. token 在板子上取：`cat ~/commander-token.txt`（免 sudo）
+4. （可选）点「发现」自动找板子
+
+> 早先 token 和 IP、两个按钮挤在同一行，token 只有一个 hint 当标签、颜色又没设，
+> 深色底上几乎看不见 —— 用起来就像「这个 App 没有填 token 的地方」。v0.2.1 改成分行 + 显式标签。
 
 ## 免安装管理网页
 

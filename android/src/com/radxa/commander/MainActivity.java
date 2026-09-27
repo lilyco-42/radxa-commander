@@ -11,6 +11,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.InputType;
+import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
@@ -83,30 +84,51 @@ public class MainActivity extends Activity {
         deviceLine.setTextSize(12);
         root.addView(deviceLine);
 
-        LinearLayout connRow = new LinearLayout(this);
-        connRow.setOrientation(LinearLayout.HORIZONTAL);
+        // 连接区：IP 一行、token 一行，各自带**看得见**的标签。
+        // 以前 IP / token / 连接 / 发现 四个挤在一行，token 只有一个 hint 当标签，
+        // 而 hint 颜色没设、在深色底上几乎看不见 —— 用户会以为「这个 App 没有填 token 的地方」。
+        LinearLayout ipRow = new LinearLayout(this);
+        ipRow.setOrientation(LinearLayout.HORIZONTAL);
+        ipRow.setGravity(Gravity.CENTER_VERTICAL);
+        ipRow.addView(mkLabel("板子 IP"));
         ipField = new EditText(this);
         ipField.setText(ip);
-        ipField.setHint("板子IP");
-        ipField.setTextSize(12);
+        ipField.setHint("10.42.0.1");
+        ipField.setTextSize(13);
         ipField.setTextColor(0xFFE6ECF5);
-        connRow.addView(ipField, new LinearLayout.LayoutParams(0,
+        ipField.setHintTextColor(0xFF5B6780);
+        ipRow.addView(ipField, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        tokenField = new EditText(this);
-        tokenField.setText(token);
-        tokenField.setHint("token");
-        tokenField.setTextSize(12);
-        tokenField.setTextColor(0xFFE6ECF5);
-        tokenField.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        connRow.addView(tokenField, new LinearLayout.LayoutParams(0,
-                ViewGroup.LayoutParams.WRAP_CONTENT, 1.4f));
-        connRow.addView(mkBtn("连接", new View.OnClickListener() {
-            public void onClick(View v) { connect(); }
-        }));
-        connRow.addView(mkBtn("发现", new View.OnClickListener() {
+        ipRow.addView(mkBtn("发现", new View.OnClickListener() {
             public void onClick(View v) { discover(); }
         }));
-        root.addView(connRow);
+        root.addView(ipRow);
+
+        LinearLayout tokRow = new LinearLayout(this);
+        tokRow.setOrientation(LinearLayout.HORIZONTAL);
+        tokRow.setGravity(Gravity.CENTER_VERTICAL);
+        tokRow.addView(mkLabel("token"));
+        tokenField = new EditText(this);
+        tokenField.setText(token);
+        tokenField.setHint("粘贴板端 token");
+        tokenField.setTextSize(13);
+        tokenField.setTextColor(0xFFE6ECF5);
+        tokenField.setHintTextColor(0xFF5B6780);
+        tokenField.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        tokRow.addView(tokenField, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        tokRow.addView(mkBtn("连接", new View.OnClickListener() {
+            public void onClick(View v) { connect(); }
+        }));
+        root.addView(tokRow);
+
+        // 逃生通道写在脸上：token 在哪拿，不用等失败了再弹框
+        TextView tokenHint = new TextView(this);
+        tokenHint.setText("token 在板子上取：cat ~/commander-token.txt（免 sudo）");
+        tokenHint.setTextSize(11);
+        tokenHint.setTextColor(0xFF8B98B0);
+        tokenHint.setPadding(0, 0, 0, pad / 4);
+        root.addView(tokenHint);
 
         connLine = new TextView(this);
         connLine.setTextSize(12);
