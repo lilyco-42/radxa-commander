@@ -72,13 +72,24 @@ Release 签名用仓库 Secrets：`KEYSTORE_B64` / `KEY_ALIAS` / `KEYSTORE_PASS`
 结果是**每次 CI 出包的签名都不一样**，Android 直接拒绝安装：
 `INSTALL_FAILED_UPDATE_INCOMPATIBLE` —— 用户只能先卸载（连 IP/token 一起丢）。
 
-本项目历史上就踩过：本地 dev 包、v0.2.0 Release 包、后来的 CI 包**是三把不同的钥匙**，
-而且那两把临时私钥随 runner 一起销毁、**永久找不回来了**。
+实测三把不同的钥匙（`apksigner verify --print-certs` 逐个下载比对）：
+
+| 包 | 签名 SHA-256 | 说明 |
+|---|---|---|
+| v0.1.0 Release | `04:99:44:AB:9A:4F:2B:9F:…` | CI 临时生成，私钥已随 runner 销毁 |
+| v0.2.0 Release | `6E:85:33:F7:DA:10:5E:98:…` | 同上，**找不回来了** |
+| **v0.2.1 起（固定）** | `60:D5:7C:8D:5C:68:57:3F:FA:F7:20:84:DB:DD:DB:2F:7D:08:E4:CA:19:96:98:C3:3D:6A:C2:0F:3A:63:C7:32` | 与本地 `android/build/dev.keystore` 同源 |
 
 所以现在 `build-apk.sh` 在**发版构建**（tag）时如果没有 `KEYSTORE_B64` 会**直接失败**，
-不再产出「装不上去的 Release」。
+不再产出「装不上去的 Release」。构建日志里会打印签名指纹，一眼可核对。
 
-> **一次性代价**：如果你手机上装的旧版是用已丢失的临时密钥签的，
+> **坑（已修）**：Secrets 配好了也可能不生效 —— `build-apk.sh` 读的是**环境变量**，
+> workflow 里必须显式写 `KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}` 把它映射进 `env`。
+> 只配 Secrets 不映射 = 等于没配，tag 构建会挂在 `REQUIRE_RELEASE_KEY` 上。
+> 同理，`main` 分支构建也需要这段映射，否则它会退回「现场生成临时 key」，
+> 于是每个 main 构建的签名又各不相同。
+
+> **一次性代价**：如果你手机上装的旧版是用已丢失的临时密钥签的（v0.1.0 / v0.2.0），
 > 这次（以及以后）的包第一次安装需要**先卸载旧版**。卸载一次之后，
 > 以后所有版本都能正常覆盖安装。
 > 如果旧版恰好是本地 `commander-dev.apk`（同一个 `dev.keystore`），则可以无缝升级。
