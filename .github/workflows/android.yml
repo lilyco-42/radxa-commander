@@ -29,6 +29,13 @@ jobs:
           # 发版必须有稳定签名密钥。没有就直接失败 —— 用临时密钥签出来的包
           # 盖不上旧版（INSTALL_FAILED_UPDATE_INCOMPATIBLE），发出去等于给用户埋坑。
           REQUIRE_RELEASE_KEY: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '' }}
+          # ⚠️ 这四行必须有。build-apk.sh 读的是环境变量；Secrets 不显式映射到 env
+          # 就等于没配 —— 发版时 REQUIRE_RELEASE_KEY=1 直接失败（曾经踩过）。
+          # 所有构建（含 main）都用这把固定密钥，签名才能长期一致。
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
+          KEY_PASS: ${{ secrets.KEY_PASS }}
         run: bash build-apk.sh
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

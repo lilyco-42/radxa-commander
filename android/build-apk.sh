@@ -56,4 +56,8 @@ fi
 "$BT/zipalign" -f 4 "$UNSIGNED" "$ALIGNED"
 "$BT/apksigner" sign --ks "$KS" --ks-pass "pass:$KSPASS" --key-pass "pass:$KPASS" "$ALIGNED"
 "$BT/apksigner" verify "$ALIGNED" && echo "APK_OK $ALIGNED (versionName=$VERSION_NAME code=$VERSION_CODE)"
+# 把签名指纹打进日志：这是判断「新版能不能盖住旧版」的唯一依据。
+# 各构建（main / tag）应始终是同一串指纹；变了就说明密钥来源变了。
+echo "== 签名证书（各版本必须一致，否则用户只能卸载重装）："
+"$BT/apksigner" verify --print-certs "$ALIGNED" | grep -Ei 'certificate DN|SHA-256 digest' | head -4 || true
 
