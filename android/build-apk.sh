@@ -20,8 +20,8 @@ ALIGNED="$OUT/commander.apk"
 
 # 版本号走变量，别在两处硬编码（以前 version-name 写死 0.2.0，
 # 结果 v0.2.1 的包对外还是报 0.2.0）
-VERSION_NAME="${VERSION_NAME:-0.2.1}"
-VERSION_NAME="${VERSION_NAME#v}"        # 允许直接传 tag 名（v0.2.1）
+VERSION_NAME="${VERSION_NAME:-0.3.0}"
+VERSION_NAME="${VERSION_NAME#v}"        # 允许直接传 tag 名（v0.3.0）
 if [[ -z "${VERSION_CODE:-}" ]]; then
   _a="${VERSION_NAME%%.*}"; _rest="${VERSION_NAME#*.}"
   _b="${_rest%%.*}"; _c="${_rest#*.}"

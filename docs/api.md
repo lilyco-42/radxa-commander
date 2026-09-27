@@ -1,4 +1,4 @@
-# radxa-commander board control API contract (v0.2.1)
+# radxa-commander board control API contract (v0.3.0)
 # Base: http://<board>:18080   Auth: Authorization: Bearer <token>
 # Token: /etc/radxa-commander/token (0600 root). install.sh 另存一份 0600 到安装者 home:
 #        ~/commander-token.txt   ->  `cat ~/commander-token.txt` 即可取回，无需 sudo。
@@ -22,9 +22,23 @@
 # POST /api/reboot             {rebooting:true}
 # GET  /api/split              {now, all}   (mihomo selector)
 # PUT  /api/split              {name} -> {now, all}
-# GET  /api/check              {ap_active, ip_forward, tx_delay{value,ok},
-#                               nat_masquerade, redirect_tcp, dns_hijack_udp,
-#                               mihomo_active, dnsmasq_running}
+# GET  /api/check              网络体检。8 个老字段保持原样（App/网页版在用）：
+#                               {ap_active, ip_forward, tx_delay{value,ok},
+#                                nat_masquerade, redirect_tcp, dns_hijack_udp,
+#                                mihomo_active, dnsmasq_running}
+#                               v0.3.0 新增：
+#                               {wan{iface,cidr,gw}, ap{iface,cidr,net,ssid,active,autoconnect,power_reason},
+#                                forward_accept, conflict, lan_direct,
+#                                ok, problems[]}
+#                               NOTE: 实现上它是直接跑 net-ensure.sh --check 拿 JSON。
+#                               别在这边另写一套 iptables -C 检查 —— 以前两处各写一套，
+#                               换了上游之后规则明明是对的、体检却报一排红，反过来骗人。
+#                               NOTE: net-ensure.sh 需要 root（iptables/sysctl 在 /usr/sbin）。
+#                               非 root 调用会返回 {"ok":false,"need_root":true,"problems":[...]}。
+# GET  /api/net                 {version, check{...同 /api/check}, rules[{type,payload,proxy}]}
+#                               比 /api/check 多带 mihomo 当前规则表 —— 排查
+#                               「某个网段为什么走了代理」时直接看 rules。
+#                               私有网段（10/8 172.16/12 192.168/16 …）应命中 IPCIDR -> DIRECT。
 #
 # Errors:
 #   401 {"error":"token 不匹配", "hint":"取回 token：在板子上执行 cat ~/commander-token.txt ..."}
