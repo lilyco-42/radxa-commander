@@ -1,0 +1,13 @@
+[Unit]
+Description=radxa-commander: ensure NAT/透明劫持规则（自愈，接任意路由器）
+Documentation=https://github.com/lilyco-42/radxa-commander
+# 必须等 NetworkManager 把接口配好、mihomo 起来，否则探测不到 WAN/AP
+After=network-online.target NetworkManager.service mihomo.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/net-ensure.sh --quiet
+# 幂等脚本：失败就交给 timer 下一轮重试，不要在这里反复重启
+RemainAfterExit=no
+Nice=5

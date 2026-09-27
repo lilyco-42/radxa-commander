@@ -1,0 +1,28 @@
+#!/bin/sh
+# radxa-commander / NetworkManager dispatcher 钩子
+#
+# 从 95-ghboost-split 改名而来。旧版把 end0 / wlan0 / 10.42.0.0/24 全写死在这里，
+# 换接口或换网段就失效；现在这里只负责「接口一变就立刻叫一次 net-ensure」，
+# 真正的规则由 /usr/local/bin/net-ensure.sh 统一算（它自己探测、幂等）。
+#
+# 为什么还要保留这个钩子：timer 最多要等 60s，而接口 up 的瞬间就重放规则
+# 能让「插上网线/热点刚起来」这种情况几乎无感。两者互补，不是二选一。
+#
+# 安装位置: /etc/NetworkManager/dispatcher.d/95-commander-net
+# 权限: root:root 0755（dispatcher 要求不可被非 root 写入）
+
+IFACE="$1"
+ACTION="$2"
+
+case "$ACTION" in
+    up|dhcp4-change|reapply|connectivity-change)
+        exec /usr/local/bin/net-ensure.sh --quiet
+        ;;
+    down)
+        # 接口 down 时不删规则：网线拔了又插、热点重开，规则留着更省事，
+        # 而且 net-ensure 本身幂等，留着也不会算错。
+        exit 0
+        ;;
+esac
+
+exit 0

@@ -153,11 +153,29 @@ async function runCheck(){
   const el = document.getElementById('check'); el.textContent = '体检中…';
   try {
     const c = await api('GET', '/api/check');
-    const rows = [['热点在线',c.ap_active],['IP转发',c.ip_forward],
+    const wan = c.wan || {}, ap = c.ap || {};
+    const rows = [
+      ['热点在线', c.ap_active],
+      ['热点开机自启', (ap.autoconnect !== false)],   // 关掉的话重启后代理会失效
+      ['IP转发', c.ip_forward],
       ['tx-delay=' + ((c.tx_delay||{}).value||'?'), !!((c.tx_delay||{}).ok)],
-      ['NAT出口',c.nat_masquerade],['TCP劫持',c.redirect_tcp],['DNS劫持',c.dns_hijack_udp],
-      ['mihomo',c.mihomo_active],['dnsmasq',c.dnsmasq_running]];
-    el.innerHTML = rows.map(r => '<span class="' + (r[1]?'ok':'bad') + '">' + (r[1]?'✅':'❌') + ' ' + r[0] + '</span>').join('\n');
+      ['NAT出口', c.nat_masquerade],
+      ['TCP劫持', c.redirect_tcp],
+      ['DNS劫持', c.dns_hijack_udp],
+      ['mihomo', c.mihomo_active],
+      ['私网直连', c.lan_direct],                     // 缺了就打不开上游路由器/NAS
+      ['dnsmasq', c.dnsmasq_running]];
+    let html = rows.map(r => '<span class="' + (r[1]?'ok':'bad') + '">' +
+      (r[1]?'✅':'❌') + ' ' + r[0] + '</span>').join('\n');
+    html += '\n\nWAN  ' + (wan.iface||'?') + '  ' + (wan.cidr||'无地址') +
+            (wan.gw ? '  网关 ' + wan.gw : '') +
+            '\n热点 ' + (ap.iface||'?') + '  ' + (ap.net||'?') +
+            '  当前 ' + (ap.cidr||'未启动') +
+            '\n网段冲突 ' + (c.conflict ? '❌ 有（会自动避让）' : '✅ 无');
+    if (c.problems && c.problems.length) {
+      html += '\n\n待处理：\n' + c.problems.map(p => '· ' + p).join('\n');
+    }
+    el.innerHTML = html;
   } catch(e){ el.textContent = '失败：' + e.message; }
 }
 async function loadWifi(){

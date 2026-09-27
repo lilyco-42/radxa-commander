@@ -17,6 +17,7 @@ Endpoints (all JSON; errors -> {"error": msg}):
   GET  /api/split              mihomo selector {now, all}
   PUT  /api/split              {name}
   GET  /api/check              one-click health booleans
+  GET  /api/net                网络诊断：WAN/AP 接口与网段、是否冲突、规则是否就位
 """
 
 import json
@@ -28,7 +29,7 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-VERSION = "0.2.1"
+VERSION = "0.3.0"
 LISTEN = ("0.0.0.0", 18080)
 TOKEN_FILE = "/etc/radxa-commander/token"
 # Shown to whoever gets a 401. The whole point: never leave the user at a dead end.
@@ -39,6 +40,8 @@ MIHOMO_CTRL = "http://127.0.0.1:9091"
 SELECTOR = "\U0001f680 \u8282\u70b9\u9009\u62e9"  # 🚀 节点选择
 AP_CON = "radxa-ap"
 LEASES = "/var/lib/NetworkManager/dnsmasq-wlan0.leases"
+# 网络层规则的唯一事实源。体检也问它 —— 见 get_check() 的注释。
+NET_ENSURE = "/usr/local/bin/net-ensure.sh"
 
 
 def run(*argv, timeout=20):
@@ -80,6 +83,34 @@ def mihomo_put(path, obj, timeout=10):
         return True
 
 
+# ---- 网络探测（不写死接口名）-----------------------------------------------
+# 以前这里写死 end0 / wlan0 / 10.42.0.0/24，换网卡、换上游、换网段就全错。
+
+def wan_iface():
+    """默认路由所在的接口。上游接哪个路由器、插哪个网口，这里就跟着变。"""
+    rc, out, _ = run("ip", "-4", "route", "show", "default")
+    if rc:
+        return ""
+    for line in out.splitlines():
+        parts = line.split()
+        if "dev" in parts:
+            return parts[parts.index("dev") + 1]
+    return ""
+
+
+def iface_ip(dev):
+    if not dev:
+        return ""
+    rc, out, _ = run("ip", "-4", "-o", "addr", "show", "dev", dev, "scope", "global")
+    if rc:
+        return ""
+    for line in out.splitlines():
+        parts = line.split()
+        if "inet" in parts:
+            return parts[parts.index("inet") + 1].split("/")[0]
+    return ""
+
+
 # ---- collectors -----------------------------------------------------------
 
 def get_status():
@@ -102,8 +133,8 @@ def get_status():
             break
         except OSError:
             continue
-    _, wan_ip, _ = run("sh", "-c",
-                       "ip -4 -o addr show end0 scope global | awk '{print $4}' | cut -d/ -f1 | head -1")
+    wif = wan_iface()
+    wan_ip = iface_ip(wif)
     _, ssid, _ = nmcli("-f", "802-11-wireless.ssid", "connection", "show", AP_CON)
     _, chan, _ = nmcli("-f", "802-11-wireless.channel", "connection", "show", AP_CON)
     _, mm_active, _ = run("systemctl", "is-active", "mihomo")
@@ -119,7 +150,7 @@ def get_status():
         "load1": load1,
         "mem_mb": mem,
         "temp_c": temp_c,
-        "wan": {"iface": "end0", "ip": wan_ip},
+        "wan": {"iface": wif, "ip": wan_ip},
         "ap": {"ssid": ssid.split(":", 1)[-1] if ":" in ssid else ssid,
                "channel": chan.split(":", 1)[-1] if ":" in chan else chan,
                "enabled": ap_active(),
@@ -303,32 +334,59 @@ def set_split(name):
 
 
 def get_check():
-    def has_ipt(table, *spec):
-        rc, _, _ = run("iptables", "-t", table, "-C", *spec)
-        return rc == 0
-    rc, ipf, _ = run("sh", "-c", "sysctl -n net.ipv4.ip_forward")
-    try:
-        with open("/sys/class/net/end0/device/tx_delay") as f:
-            tx = "".join(c for c in f.read().splitlines()[-1] if c.isdigit())
-    except OSError:
-        tx = ""
-    _, ap_names, _ = run("nmcli", "-t", "-f", "NAME", "connection", "show", "--active")
+    """网络体检。
+
+    这里【故意】不自己检查 iptables，而是直接问 net-ensure.sh。
+    原因是以前两处各写一套：net-ensure 按实际接口/网段下规则，体检却写死
+    end0/wlan0/10.42.0.0/24 去 -C 查 —— 换了上游之后规则明明是对的，
+    体检却报一排红，反过来骗人。让「下规则」和「查规则」共用一份逻辑，
+    体检结果才可信。
+    """
+    rc, out, err = run(NET_ENSURE, "--check", timeout=30)
+    if out:
+        try:
+            return json.loads(out)
+        except ValueError:
+            pass
+    # 兜底：脚本没装/坏了，也别让整个接口 500 —— 回一份最小可用的结果，
+    # 并把「为什么不可信」明说给调用方。
     _, mm, _ = run("systemctl", "is-active", "mihomo")
-    _, dq, _ = run("sh", "-c", "ps -o comm= -C dnsmasq | head -1")
+    _, ap_names, _ = run("nmcli", "-t", "-f", "NAME", "connection", "show", "--active")
     return {
+        "ok": False,
+        "problems": ["net-ensure.sh 不可用（没装或执行失败）：" + (err or "无输出")],
         "ap_active": AP_CON in (ap_names or "").splitlines(),
-        "ip_forward": ipf.strip() == "1",
-        "tx_delay": {"value": tx, "ok": tx == "9"},
-        "nat_masquerade": has_ipt("nat", "POSTROUTING", "-s", "10.42.0.0/24",
-                                  "-o", "end0", "-j", "MASQUERADE"),
-        "redirect_tcp": has_ipt("nat", "PREROUTING", "-i", "wlan0", "-p", "tcp",
-                                "-m", "addrtype", "!", "--dst-type", "LOCAL",
-                                "-j", "REDIRECT", "--to-ports", "7892"),
-        "dns_hijack_udp": has_ipt("nat", "PREROUTING", "-i", "wlan0", "-p", "udp",
-                                  "--dport", "53", "-j", "REDIRECT", "--to-ports", "1053"),
         "mihomo_active": mm.strip() == "active",
-        "dnsmasq_running": dq.strip() == "dnsmasq",
+        "ip_forward": False,
+        "tx_delay": {"value": "", "ok": False},
+        "nat_masquerade": False,
+        "redirect_tcp": False,
+        "dns_hijack_udp": False,
+        "dnsmasq_running": False,
+        "wan": {"iface": wan_iface(), "cidr": "", "gw": ""},
+        "ap": {"iface": "", "cidr": "", "net": "", "ssid": "", "active": False,
+               "autoconnect": False, "power_reason": ""},
+        "forward_accept": False,
+        "conflict": False,
+        "lan_direct": False,
     }
+
+
+def get_net():
+    """网络诊断详情：net-ensure 的体检 + mihomo 当前规则表。
+
+    体检只能回答「私有网段直连规则在不在」，看不出具体几条、顺序对不对，
+    所以把规则表也带上 —— 排查「某个网段为什么走了代理」时直接看这里。
+    """
+    check = get_check()
+    rules = []
+    try:
+        for r in mihomo_get("/rules").get("rules", []):
+            rules.append({"type": r.get("type"), "payload": r.get("payload"),
+                          "proxy": r.get("proxy")})
+    except Exception:  # noqa: BLE001
+        pass
+    return {"version": VERSION, "check": check, "rules": rules}
 
 
 # ---- HTTP ---------------------------------------------------------------
@@ -420,6 +478,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, get_split())
             elif self.path == "/api/check":
                 self._send(200, get_check())
+            elif self.path == "/api/net":
+                self._send(200, get_net())
             else:
                 self._send(404, {"error": "not found"})
         except Exception as e:  # noqa: BLE001

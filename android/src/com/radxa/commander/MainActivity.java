@@ -471,6 +471,10 @@ public class MainActivity extends Activity {
                     final JSONObject c = api.get("/api/check");
                     final StringBuilder sb = new StringBuilder();
                     sb.append(item("热点在线", c.optBoolean("ap_active")));
+                    // 热点不是开机自启 = 重启后代理会失效，必须显眼
+                    JSONObject ap = c.optJSONObject("ap");
+                    boolean apAuto = ap == null || ap.optBoolean("autoconnect", true);
+                    sb.append(item("热点开机自启", apAuto));
                     sb.append(item("IP 转发", c.optBoolean("ip_forward")));
                     JSONObject tx = c.optJSONObject("tx_delay");
                     if (tx != null) {
@@ -480,7 +484,30 @@ public class MainActivity extends Activity {
                     sb.append(item("TCP 透明劫持", c.optBoolean("redirect_tcp")));
                     sb.append(item("DNS 劫持", c.optBoolean("dns_hijack_udp")));
                     sb.append(item("mihomo", c.optBoolean("mihomo_active")));
+                    // 缺了这条，连上热点后打不开上游路由器 / NAS / 打印机
+                    sb.append(item("私网直连", c.optBoolean("lan_direct")));
                     sb.append(item("dnsmasq", c.optBoolean("dnsmasq_running")));
+
+                    JSONObject wan = c.optJSONObject("wan");
+                    if (wan != null) {
+                        sb.append("WAN  ").append(wan.optString("iface", "?"))
+                          .append("  ").append(wan.optString("cidr", "无地址")).append("\n");
+                    }
+                    if (ap != null) {
+                        sb.append("热点 ").append(ap.optString("iface", "?"))
+                          .append("  ").append(ap.optString("net", "?"))
+                          .append("  当前 ").append(ap.optString("cidr", "未启动")).append("\n");
+                    }
+                    sb.append(c.optBoolean("conflict")
+                            ? "❌ 网段与上游冲突（会自动避让）\n" : "✅ 网段无冲突\n");
+
+                    JSONArray probs = c.optJSONArray("problems");
+                    if (probs != null && probs.length() > 0) {
+                        sb.append("\n待处理：\n");
+                        for (int i = 0; i < probs.length(); i++) {
+                            sb.append("· ").append(probs.optString(i)).append("\n");
+                        }
+                    }
                     final String out = sb.toString();
                     ui.post(new Runnable() {
                         public void run() { checkBox.setText(out); }

@@ -1,0 +1,14 @@
+[Unit]
+Description=radxa-commander: 定期自愈网络规则（每 60s）
+Documentation=https://github.com/lilyco-42/radxa-commander
+
+[Timer]
+# 开机后 15s 跑第一次（等 NM/mihomo 就绪），之后每 60s 一次。
+# 这就是「重启后依旧有效」的兜底：不依赖任何 NetworkManager 事件，
+# 就算 AP 是后来才起来的、或者有人手动删了规则，最多 60s 自己恢复。
+OnBootSec=15s
+OnUnitActiveSec=60s
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target
