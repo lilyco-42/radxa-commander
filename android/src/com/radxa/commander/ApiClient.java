@@ -11,6 +11,11 @@ import org.json.JSONObject;
 /** Minimal JSON REST client for the board commander API. No dependencies. */
 public class ApiClient {
 
+    /** 板子可达、但 token 不对（或板子还没生成 token）。单独一类，好让 UI 给出「怎么拿 token」而不是一句报错。 */
+    public static class AuthException extends Exception {
+        public AuthException(String m) { super(m); }
+    }
+
     private final String base;
     private final String token;
 
@@ -44,8 +49,17 @@ public class ApiClient {
             int code = c.getResponseCode();
             InputStream is = code < 400 ? c.getInputStream() : c.getErrorStream();
             String s = readAll(is);
-            if (code == 401) {
-                throw new Exception("Token 错误或未授权(401)，请核对板端 token");
+            if (code == 401 || code == 503) {
+                String err = "token 不对";
+                String hint = "";
+                try {
+                    JSONObject o = new JSONObject(s);
+                    err = o.optString("error", err);
+                    hint = o.optString("hint", "");
+                } catch (Exception ignored) {
+                    // keep defaults
+                }
+                throw new AuthException(err + (hint.isEmpty() ? "" : "\n" + hint));
             }
             if (code >= 400) {
                 String msg = s;

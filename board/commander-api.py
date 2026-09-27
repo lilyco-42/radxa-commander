@@ -28,9 +28,11 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 LISTEN = ("0.0.0.0", 18080)
 TOKEN_FILE = "/etc/radxa-commander/token"
+# Shown to whoever gets a 401. The whole point: never leave the user at a dead end.
+TOKEN_HINT = "取回 token：在板子上执行  cat ~/commander-token.txt  （或  sudo cat /etc/radxa-commander/token）"
 BLOCKED_FILE = "/etc/radxa-commander/blocked.conf"
 WEB_INDEX = "/usr/local/share/radxa-commander/index.html"
 MIHOMO_CTRL = "http://127.0.0.1:9091"
@@ -53,6 +55,11 @@ def load_token():
             return f.read().strip()
     except OSError:
         return ""
+
+
+def token_ready():
+    """True once install.sh has generated a token. Safe to expose (no secret)."""
+    return bool(load_token())
 
 
 def nmcli(*args):
@@ -340,12 +347,32 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _auth(self):
+    def _auth_reason(self):
+        """None -> 放行；'no_token' -> 板子还没生成 token；'bad_token' -> 带了但不对。
+
+        分开这两种是刻意的：以前两种情况都回一个光秃秃的 401 unauthorized，
+        用户看到的就是「弹需要 token」，却不知道 token 在哪、甚至不知道板子压根没生成过。
+        """
         token = load_token()
         if not token:
+            return "no_token"
+        if self.headers.get("Authorization", "") != "Bearer " + token:
+            return "bad_token"
+        return None
+
+    def _deny(self):
+        """鉴权失败就直接回话并返回 True；通过则返回 False。"""
+        reason = self._auth_reason()
+        if reason is None:
             return False
-        auth = self.headers.get("Authorization", "")
-        return auth == "Bearer " + token
+        if reason == "no_token":
+            self._send(503, {
+                "error": "板子还没生成 token",
+                "hint": "在板子上执行  sudo bash ~/commander-board/install.sh",
+            })
+        else:
+            self._send(401, {"error": "token 不匹配", "hint": TOKEN_HINT})
+        return True
 
     def _body(self):
         try:
@@ -375,10 +402,10 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
         if self.path == "/api/hello":
-            self._send(200, {"app": "radxa-commander", "version": VERSION})
+            self._send(200, {"app": "radxa-commander", "version": VERSION,
+                             "token_required": True, "token_ready": token_ready()})
             return
-        if not self._auth():
-            self._send(401, {"error": "unauthorized"})
+        if self._deny():
             return
         try:
             if self.path == "/api/status":
@@ -399,8 +426,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(500, {"error": str(e)})
 
     def _mutate(self):
-        if not self._auth():
-            self._send(401, {"error": "unauthorized"})
+        if self._deny():
             return
         body = self._body()
         try:

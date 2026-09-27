@@ -247,17 +247,55 @@ public class MainActivity extends Activity {
         setConn("连接中…", false);
         runBg(new Runnable() {
             public void run() {
+                // 第 1 步：/api/hello 免鉴权 —— 只能证明「板子在」，绝不能当登录成功。
+                // 以前这里打完 hello 就报「已连接 / API 通」，token 明明是错的也照样绿，
+                // 于是用户看到的就是「说连上了，点进去全失败，还弹需要 token」。
+                JSONObject hello;
                 try {
-                    JSONObject hello = api.get("/api/hello");
-                    final String v = hello.optString("version", "?");
-                    ui.post(new Runnable() {
-                        public void run() { deviceLine.setText("已连接 " + ip + "（v" + v + "）"); }
-                    });
-                    setConn("API 通", true);
-                    refreshStatus();
+                    hello = api.get("/api/hello");
+                } catch (final Exception e) {
+                    setConn("连不上板子：" + e.getMessage(), false);
+                    return;
+                }
+                final String v = hello.optString("version", "?");
+                if (!hello.optBoolean("token_ready", true)) {
+                    setConn("板子还没生成 token", false);
+                    showTokenHelp("板子还没生成 token。\n\n在板子上执行：\n  sudo bash ~/commander-board/install.sh");
+                    return;
+                }
+                ui.post(new Runnable() {
+                    public void run() { deviceLine.setText("板子 " + ip + "（v" + v + "）"); }
+                });
+                // 第 2 步：拿一个必须鉴权的接口验证 token。过了才算真进得去。
+                try {
+                    api.get("/api/status");
+                } catch (final ApiClient.AuthException e) {
+                    setConn("token 不对，进不了后台", false);
+                    showTokenHelp(e.getMessage());
+                    return;
                 } catch (final Exception e) {
                     setConn("连接失败：" + e.getMessage(), false);
+                    return;
                 }
+                setConn("已连接 · token 正常", true);
+                refreshStatus();
+            }
+        });
+    }
+
+    /** 逃生通道：token 出问题时，直接把「去哪拿」摆到脸上，而不是让用户对着 401 猜。 */
+    private void showTokenHelp(final String msg) {
+        ui.post(new Runnable() {
+            public void run() {
+                new AlertDialog.Builder(MainActivity.this)
+                        .setTitle("进不了后台？拿 token")
+                        .setMessage(msg
+                                + "\n\n取回 token（SSH 到板子，二选一）：\n"
+                                + "  cat ~/commander-token.txt\n"
+                                + "  sudo cat /etc/radxa-commander/token\n\n"
+                                + "连不上就先确认手机和板子在同一网络；\nAP 下板子 IP 是 10.42.0.1。")
+                        .setPositiveButton("知道了", null)
+                        .show();
             }
         });
     }

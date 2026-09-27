@@ -26,10 +26,31 @@ App **不直连 SSH**，只调板端控制 API。板子与手机之间是版本�
 ```bash
 # 把 board/ 传上板子后
 sudo bash board/install.sh
-# 输出 token，填进 App 的 token 栏
+# 结尾会把「管理页地址 + token」整块打出来，照着填就行
 ```
 
-API 监听 `0.0.0.0:18080`，token 在 `/etc/radxa-commander/token`（0600）。
+API 监听 `0.0.0.0:18080`，token 在 `/etc/radxa-commander/token`（0600 root）。
+
+## token 忘了 / 进不去后台
+
+这是最常见的卡点：token 只在装的时候打印过一次，之后锁在 `0600 root` 里，
+普通用户 `ls` 都进不去 `/etc/radxa-commander/`（0700 root）。所以 **install.sh 会顺手给安装者留一份副本**，
+权限模型和 `~/.ssh` 私钥一样（0600，属于你自己）：
+
+```bash
+cat ~/commander-token.txt              # 免 sudo，随时取回
+sudo commander-token                   # 或者这条（顺带打印管理页地址）
+```
+
+老版本装过、home 里没有副本的，跑一次 `sudo bash ~/commander-board/install.sh` 就会补上
+（token 不会被重置，install.sh 是幂等的）。
+
+App 和网页版在 token 不对时都会**明确说「token 不对」并把上面两条命令摆出来**，
+不会再只丢一个 `unauthorized` 让你猜。
+
+> 设计取舍：连接校验分两步 —— 先打免鉴权的 `/api/hello` 判断「板子在不在」，
+> 再打必须鉴权的 `/api/status` 判断「token 对不对」。
+> 只用 `/api/hello` 判断会**谎报成功**（token 是错的也显示已连接），这是 v0.2.1 修掉的 bug。
 
 ## App 构建（无 Android Studio）
 
@@ -46,7 +67,7 @@ Release 签名用仓库 Secrets：`KEYSTORE_B64` / `KEY_ALIAS` / `KEYSTORE_PASS`
 ## 使用
 
 1. 手机连 `Radxa-AP`（或同一局域网）
-2. App：IP 填 `10.42.0.1`（AP 下）或板子 LAN IP → 填 token → 连接
+2. App：IP 填 `10.42.0.1`（AP 下）或板子 LAN IP → 填 token（`cat ~/commander-token.txt`）→ 连接
 3. （可选）点“发现”自动找板子
 
 ## 免安装管理网页
